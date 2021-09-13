@@ -45,8 +45,8 @@ def orpha_do_map():
 def get_hpo_annot():
     """ Get HPO annotations from HPO jax org, these are edges from
     HPO terms to Orpha and Omim """
-    url = 'http://purl.obolibrary.org/obo/hp/hpoa/genes_to_phenotype.txt'
-    hpo_annot = pd.read_csv(url, delimiter = "\t", skiprows = 2, header = None)
+    url = ''
+    hpo_annot = pd.read_csv("hpo_anot.txt", delimiter = "\t", skiprows = 2, header = None)
     header_key = ["HPO_ID", "HPO_LABEL", "gen_id", "gen_name", "info_from_source", "source", "disease_id"]
     hpo_annot.columns = header_key
     hpo_annot.drop(columns = 'info_from_source', inplace = True)
@@ -54,7 +54,7 @@ def get_hpo_annot():
 
 
 
-def main():
+def get_edges():
     """ Build a Dataframe with 2 Columns, one is the Mesh term and the Other is the DOID"""
     #Get the edges 
     hpo_annot = get_hpo_annot()
@@ -94,8 +94,10 @@ def main():
     hpo_mesh_edge_to_orpha_do.drop_duplicates(inplace = True)
 
     mesh_edge_to_do = pd.concat([hpo_mesh_edge_to_orpha_do, hpo_mesh_edge_to_omim_do], ignore_index= True)
+    mesh_edge_to_do['DOID'] = "DOID:" + mesh_edge_to_do['DOID'].astype(str)
+
 
     return mesh_edge_to_do
 
-
-
+edges = get_edges()
+edges.to_csv('edges')
