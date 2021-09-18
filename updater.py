@@ -2,23 +2,28 @@ import os
 from bioportal_client import BioPortalClient
 import pandas as pd
 import requests
-
+import subprocess
 
 def get_bioportal_mappings(from_ontology, to_ontology):
     api_key = "225a7f07-744e-41fc-b8e8-7c3d9b11a100"
     client = BioPortalClient(api_key)
     return client.get_mappings(from_ontology, to_ontology)
 
+def robot_input():
+    with open("get_dbxref.txt", 'w') as f:
+	    f.write('PREFIX owl: <http://www.w3.org/2002/07/owl#>\nPREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\nPREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>\n\nSELECT ?concept ?label ?dbxref WHERE {\n	?concept rdf:type owl:Class ;\n	         rdfs:label ?label ;\n		     oboInOwl:hasDbXref ?dbxref .\n    FILTER(regex(?dbxref, "MSH:"))\n}')
+
+def robot_bash():
+    """ Runs the robot program to return the MPO-MESH mappings"""
+    subprocess.run('./robot convert -I http://purl.obolibrary.org/obo/hp.owl -o hp.owl extract -b http://purl.obolibrary.org/obo/HP_0000118 -m MIREOT query --query get_dbxref.txt get_dbxref.csv', shell=True)
 
 def hpo_mesh_map():
-    """ Get Hpo to Mesh mappings and parse into a Dataframe """
-
-    hpo_mesh = get_bioportal_mappings('HP', 'MESH')
-    hpo_mesh_df = pd.DataFrame.from_dict(hpo_mesh, orient='index', columns = ['HPO'])
-    hpo_mesh_df.reset_index(inplace = True)
-    hpo_mesh_df['HPO']=hpo_mesh_df['HPO'].apply(lambda row: row.split('_')[-1])
-    hpo_mesh_df['MESH']=hpo_mesh_df['index'].apply(lambda row: row.split('/')[-1])
-    hpo_mesh_df.drop(columns = 'index', inplace = True)
+    """ Get Hpo to Mesh mappings and parse into a Dataframe from ROBOT """
+    robot_bash()
+    hpo_mesh_df = pd.read_csv("get_dbxref.csv")
+    hpo_mesh_df['HPO']=hpo_mesh_df['concept'].apply(lambda row: row.split('_')[-1])
+    hpo_mesh_df['MESH']=hpo_mesh_df['dbxref'].apply(lambda row: row.split(':')[-1])
+    hpo_mesh_df.drop(columns = ['concept', 'dbxref', 'label'], inplace= True)
     return hpo_mesh_df
 
 def omim_do_map():
@@ -45,8 +50,8 @@ def orpha_do_map():
 def get_hpo_annot():
     """ Get HPO annotations from HPO jax org, these are edges from
     HPO terms to Orpha and Omim """
-    url = ''
-    hpo_annot = pd.read_csv("hpo_anot.txt", delimiter = "\t", skiprows = 2, header = None)
+    url = 'http://purl.obolibrary.org/obo/hp/hpoa/phenotype_to_genes.txt'
+    hpo_annot = pd.read_csv(url, delimiter = "\t", skiprows = 2, header = None)
     header_key = ["HPO_ID", "HPO_LABEL", "gen_id", "gen_name", "info_from_source", "source", "disease_id"]
     hpo_annot.columns = header_key
     hpo_annot.drop(columns = 'info_from_source', inplace = True)
@@ -90,7 +95,7 @@ def get_edges():
     hpo_mesh_edge_to_orpha_do = hpo_mesh_edge_to_orpha.merge(do_orpha_df, how = 'inner', on = 'ORPHA')
 
     #Clean the Dataframe dropping unnecesary columns and duplicates
-    hpo_mesh_edge_to_orpha_do.drop(columns = ['gen_name', 'gen_id', 'HPO_ID', 'source', 'disease_id', 'HPO_LABEL', 'ORPHA', 'HPO'], inplace = True)
+    hpo_mesh_edge_to_orpha_do.drop(columns = ['gen_name', 'gen_id', 'HPO_ID', 'source', 'disease_id', 'ORPHA', 'HPO', 'HPO_LABEL'], inplace = True)
     hpo_mesh_edge_to_orpha_do.drop_duplicates(inplace = True)
 
     mesh_edge_to_do = pd.concat([hpo_mesh_edge_to_orpha_do, hpo_mesh_edge_to_omim_do], ignore_index= True)
@@ -99,5 +104,13 @@ def get_edges():
 
     return mesh_edge_to_do
 
+def delete_bash():
+    subprocess.run("rm -f get_dbxref.txt get_dbxref.csv hp.owl", shell= True)
+
+robot_input()
+robot_bash()
+
 edges = get_edges()
-edges.to_csv('edges')
+edges.to_csv('edges.csv')
+
+delete_bash()
